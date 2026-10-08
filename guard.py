@@ -180,7 +180,13 @@ def check_schedule(event, block, context):
 def prepare(request):
     before = request['event']
     require(bool(before.get('id')), 'Нужен ID существующего события')
-    require(not before.get('attendees'), 'События с участниками требуют отдельного маршрута; автоматическая запись заблокирована')
+    # Self-only attendee entries are emitted by some Calendar connectors.
+    # Keep them unchanged; reject guests and unknown attendee structures.
+    attendees = before.get('attendees') or []
+    require(isinstance(attendees, list), 'Некорректное поле attendees')
+    require(len(attendees) <= 1 or not attendees, 'События с участниками требуют отдельного маршрута; автоматическая запись заблокирована')
+    require(all(isinstance(a, dict) and a.get('is_self') is True for a in attendees),
+            'События с участниками требуют отдельного маршрута; автоматическая запись заблокирована')
     old, bounds = extract(before.get('description'), request.get('previous_block'))
     if old:
         require(before.get('summary') == old['area'].strip() + ' — ' + old['task'].strip(), 'Название изменено вручную; сначала согласуй его со структурированными данными')
