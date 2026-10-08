@@ -5,6 +5,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from starlette.responses import JSONResponse
 from guard import prepare, check_current, verify, rollback, validate
+from schedule_preview import preview_slots
 
 host = os.environ.get('RENDER_EXTERNAL_HOSTNAME') or os.environ.get('VERCEL_PROJECT_PRODUCTION_URL') or os.environ.get('VERCEL_URL', '')
 allowed = ['127.0.0.1:*', 'localhost:*']
@@ -72,6 +73,17 @@ def verify_update(plan: dict, current: dict) -> dict:
 def prepare_rollback(plan: dict, current: dict) -> dict:
     """Prepare an inverse patch only if no subsequent edits occurred. Recheck scheduling before applying."""
     return rollback(plan, current)
+
+
+
+@mcp.tool(annotations=READ_ONLY)
+def preview_schedule(request: dict) -> dict:
+    """Suggest up to 3 slots from fresh complete Calendar data and explicit deadlines.
+
+    Strictly read-only. Caller supplies protected windows from Planner rules.
+    An accepted suggestion is never a Calendar update or evidence of task completion.
+    """
+    return preview_slots(request)
 
 
 @mcp.custom_route('/health', methods=['GET'])
