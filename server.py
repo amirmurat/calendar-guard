@@ -6,10 +6,13 @@ from mcp.types import ToolAnnotations
 from starlette.responses import JSONResponse
 from guard import prepare, check_current, verify, rollback, validate
 
-host = os.environ.get('RENDER_EXTERNAL_HOSTNAME', '')
+host = os.environ.get('RENDER_EXTERNAL_HOSTNAME') or os.environ.get('VERCEL_PROJECT_PRODUCTION_URL') or os.environ.get('VERCEL_URL', '')
 allowed = ['127.0.0.1:*', 'localhost:*']
 if host:
     allowed.append(host)
+for key in ('VERCEL_URL', 'VERCEL_BRANCH_URL'):
+    if os.environ.get(key):
+        allowed.append(os.environ[key])
 allowed.extend(filter(None, os.environ.get('GUARD_ALLOWED_HOSTS', '').split(',')))
 mcp = FastMCP(
     'Calendar Guard',
@@ -75,6 +78,9 @@ def prepare_rollback(plan: dict, current: dict) -> dict:
 async def health(request):
     return JSONResponse({'status': 'ok', 'service': 'calendar-guard', 'schema': 1})
 
+
+# ASGI entrypoint used by Vercel's Python runtime.
+app = mcp.streamable_http_app()
 
 if __name__ == '__main__':
     # Never log calendar request/response bodies.
