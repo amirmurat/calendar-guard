@@ -6,6 +6,7 @@ from mcp.types import ToolAnnotations
 from starlette.responses import JSONResponse
 from guard import prepare, check_current, verify, rollback, validate
 from schedule_preview import preview_slots
+from preview_compat import dispatch_prepare
 
 host = os.environ.get('RENDER_EXTERNAL_HOSTNAME') or os.environ.get('VERCEL_PROJECT_PRODUCTION_URL') or os.environ.get('VERCEL_URL', '')
 allowed = ['127.0.0.1:*', 'localhost:*']
@@ -55,7 +56,7 @@ def validate_block(block: dict) -> dict:
 @mcp.tool(annotations=READ_ONLY)
 def prepare_block(request: dict) -> dict:
     """Prepare a minimal event update. request needs event, block, context and optional previous_block/time. Does not write Calendar."""
-    return prepare(request)
+    return dispatch_prepare(request)
 
 
 @mcp.tool(annotations=READ_ONLY)
