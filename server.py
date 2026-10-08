@@ -42,6 +42,7 @@ def describe_format() -> dict:
             'work_required': ['result', 'actions', 'fallback'],
             'kinds': ['work', 'class', 'travel', 'sport', 'meeting', 'practice'],
             'unknown': 'Use null or deadline.kind=unknown; never invent facts.',
+            'read_only_preview_tool': 'preview_schedule',
             'limits': ['Existing timed events only', 'No events with guests', 'Single occurrence only', 'Caller supplies complete context', 'No Google Calendar access or persistent storage']}
 
 
