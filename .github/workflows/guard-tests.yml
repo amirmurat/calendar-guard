@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "guard.py"
+      - "schedule_preview.py"
+      - "preview_compat.py"
       - "test_*.py"
       - ".github/workflows/guard-tests.yml"
   push:

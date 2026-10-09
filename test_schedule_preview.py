@@ -65,6 +65,69 @@ class PreviewTests(unittest.TestCase):
              "end":"2026-10-10T19:00:00+05:00"})
         p=preview_slots(x,now=NOW)
         self.assertTrue(all(q["start"][:10]!="2026-10-10" for q in p["suggestions"]))
+    def test_ai_soft_penalty_prefers_unoccupied_window(self):
+        x = fixture()
+        x["task"].update({
+            "duration_minutes": 60,
+            "earliest_start": "2026-10-10T12:00:00+05:00",
+            "finish_before": "2026-10-10T16:00:00+05:00",
+            "linked_event_id": None,
+        })
+        x["protected"] = []
+        x["calendar"]["events"].append({
+            "id": "soft", "summary": "[AI][SOFT] Meal",
+            "start": "2026-10-10T13:00:00+05:00",
+            "end": "2026-10-10T14:00:00+05:00",
+            "transparency": "transparent",
+        })
+        p = preview_slots(x, now=NOW)
+        self.assertEqual(p["status"], "FEASIBLE")
+        self.assertEqual(p["suggestions"][0]["start"], "2026-10-10T12:00+05:00")
+        self.assertEqual(p["suggestions"][0]["soft_overlap_minutes"], 0)
+        self.assertEqual(p["calendar_writes"], 0)
+
+    def test_ai_soft_is_still_usable_when_only_option(self):
+        x = fixture()
+        x["task"].update({
+            "duration_minutes": 60,
+            "earliest_start": "2026-10-10T13:00:00+05:00",
+            "finish_before": "2026-10-10T14:00:00+05:00",
+            "linked_event_id": None,
+        })
+        x["protected"] = []
+        x["calendar"]["events"].append({
+            "id": "soft", "summary": "[AI][SOFT] Meal",
+            "start": "2026-10-10T13:00:00+05:00",
+            "end": "2026-10-10T14:00:00+05:00",
+            "transparency": "transparent",
+        })
+        p = preview_slots(x, now=NOW)
+        self.assertEqual(p["status"], "FEASIBLE")
+        self.assertEqual(p["suggestions"][0]["start"], "2026-10-10T13:00+05:00")
+        self.assertEqual(p["suggestions"][0]["soft_overlap_minutes"], 60)
+
+    def test_ai_soft_tag_requires_transparent(self):
+        x = fixture()
+        x["calendar"]["events"].append({
+            "id": "bad-soft", "summary": "[AI][SOFT] Label mismatch",
+            "start": "2026-10-10T13:00:00+05:00",
+            "end": "2026-10-10T14:00:00+05:00",
+            "transparency": "opaque",
+        })
+        with self.assertRaises(PreviewError):
+            preview_slots(x, now=NOW)
+
+    def test_ai_hard_tag_requires_opaque(self):
+        x = fixture()
+        x["calendar"]["events"].append({
+            "id": "bad-hard", "summary": "[AI][HARD] Label mismatch",
+            "start": "2026-10-10T13:00:00+05:00",
+            "end": "2026-10-10T14:00:00+05:00",
+            "transparency": "transparent",
+        })
+        with self.assertRaises(PreviewError):
+            preview_slots(x, now=NOW)
+
     def test_cannot_forge_confirmed_deadline(self):
         x=fixture();x["task"]["deadline_kind"]="confirmed"
         with self.assertRaises(PreviewError):preview_slots(x,now=NOW)
