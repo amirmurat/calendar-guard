@@ -266,11 +266,11 @@ def read_execution(description):
             if in_string:
                 if escaped:
                     escaped = False
-                elif char == "\\\\":
+                elif char == "\\":
                     escaped = True
                 elif char == '"':
                     in_string = False
-                if char in ("\\n", "\\r") and in_string:
+                if char in ("\n", "\r") and in_string:
                     repaired.append(" ")
                     continue
             elif char == '"':
@@ -286,7 +286,7 @@ def read_execution(description):
 
 def render_execution(record):
     # Avoid whitespace inside quoted values: Calendar word-wrap would corrupt JSON.
-    compact = canonical(validate_execution(record)).replace(" ", "\\\\u0020")
+    compact = canonical(validate_execution(record)).replace(" ", "\\u0020")
     return EXEC_OPEN + "\n" + compact + "\n" + EXEC_CLOSE
 
 
