@@ -257,13 +257,37 @@ def read_execution(description):
     try:
         record = json.loads(body)
     except (ValueError, TypeError) as exc:
-        raise GuardError("Malformed execution status JSON") from exc
+        # Calendar can wrap a long plain-text line at word boundaries even inside
+        # a JSON string. Recover only those inserted physical line breaks.
+        repaired = []
+        in_string = False
+        escaped = False
+        for char in body:
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == '"':
+                    in_string = False
+                if char in ("\n", "\r") and in_string:
+                    repaired.append(" ")
+                    continue
+            elif char == '"':
+                in_string = True
+            repaired.append(char)
+        try:
+            record = json.loads("".join(repaired))
+        except (ValueError, TypeError) as second:
+            raise GuardError("Malformed execution status JSON") from second
     validate_execution(record)
     return record, (a, b + len(EXEC_CLOSE))
 
 
 def render_execution(record):
-    return EXEC_OPEN + "\n" + canonical(validate_execution(record)) + "\n" + EXEC_CLOSE
+    # Avoid whitespace inside quoted values: Calendar word-wrap would corrupt JSON.
+    compact = canonical(validate_execution(record)).replace(" ", "\\u0020")
+    return EXEC_OPEN + "\n" + compact + "\n" + EXEC_CLOSE
 
 
 def prepare_execution(request):
