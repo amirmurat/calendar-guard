@@ -85,12 +85,23 @@ def preview_slots(request, *, now=None):
     require(type(travel_gap) is int and 0 <= travel_gap <= 120,
             "Invalid preparation-for-travel minutes")
     events = []
+    soft_events = []
     for e in raw_events:
         a, b = stamp(e.get("start")),stamp(e.get("end"))
         require(a < b, "Invalid Calendar event interval")
-        if e["id"] == linked or e.get("status") == "cancelled" or e.get("transparency") == "transparent":
+        if e["id"] == linked or e.get("status") == "cancelled":
             continue
-        travel = e.get("kind") == "travel" or "Дорога" in e.get("summary","")
+        label = e.get("summary", "")
+        transparent = e.get("transparency") == "transparent"
+        if label.startswith("[AI][HARD]"):
+            require(not transparent, "AI HARD event must be busy/opaque")
+        if label.startswith("[AI][SOFT]"):
+            require(transparent, "AI SOFT event must be free/transparent")
+        if transparent:
+            if label.startswith("[AI][SOFT]"):
+                soft_events.append((a,b))
+            continue
+        travel = e.get("kind") == "travel" or "Дорога" in label
         events.append((a,b,travel))
     blocks = []
     for p in protected:
@@ -117,9 +128,15 @@ def preview_slots(request, *, now=None):
                  for a,b,t in events):
             reasons["transition_or_travel"]+=1
         else:
+            soft_minutes = sum(
+                max(0, int((min(end,b)-max(current,a)).total_seconds() // 60))
+                for a,b in soft_events if overlap(current,end,a,b))
+            # Soft time stays feasible but loses priority to an equally practical free slot.
+            # Each 15 minutes of overlap costs roughly two hours of time-of-day preference.
+            soft_penalty = 8 * ((soft_minutes + 14) // 15)
             score=(current.date()-initial.date()).days*100 + abs(
-                current.hour*60+current.minute-13*60)//15
-            candidates.append((score,current,end))
+                current.hour*60+current.minute-13*60)//15 + soft_penalty
+            candidates.append((score,current,end,soft_minutes))
         current+=step
     candidates.sort(key=lambda x:(x[0],x[1]))
     return {"status":"FEASIBLE" if candidates else "NO_FEASIBLE_SLOT",
@@ -127,8 +144,9 @@ def preview_slots(request, *, now=None):
             "task_id":task["id"],"calendar_event_count":len(raw_events),
             "deadline_kind":task["deadline_kind"],
             "suggestions":[{"start":a.isoformat(timespec="minutes"),
-                            "end":b.isoformat(timespec="minutes"),"score":score}
-                           for score,a,b in candidates[:3]],
+                            "end":b.isoformat(timespec="minutes"),"score":score,
+                            "soft_overlap_minutes":soft_minutes}
+                           for score,a,b,soft_minutes in candidates[:3]],
             "feasible_count":len(candidates),"rejections":reasons,
             "limitations":["Supply complete live events and all hidden constraints",
                            "A Calendar change requires the separate Guard verify workflow"]}
