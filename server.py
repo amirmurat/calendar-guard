@@ -44,6 +44,7 @@ def describe_format() -> dict:
             'kinds': ['work', 'class', 'travel', 'sport', 'meeting', 'practice'],
             'unknown': 'Use null or deadline.kind=unknown; never invent facts.',
             'read_only_preview_tool': 'preview_schedule',
+            'metadata_operation': 'execution_status (description-only guarded event annotation)',
             'limits': ['Existing timed events only', 'No events with guests', 'Single occurrence only', 'Caller supplies complete context', 'No Google Calendar access or persistent storage']}
 
 
@@ -55,7 +56,7 @@ def validate_block(block: dict) -> dict:
 
 @mcp.tool(annotations=READ_ONLY)
 def prepare_block(request: dict) -> dict:
-    """Prepare a minimal event update. request needs event, block, context and optional previous_block/time. Does not write Calendar."""
+    """Prepare normal event edits or execution_status metadata-only edits. Does not write Calendar."""
     return dispatch_prepare(request)
 
 
