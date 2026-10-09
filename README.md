@@ -32,3 +32,14 @@ flexibility.movable обязателен. Дополнительно min_minutes
 Никакие учётные данные не нужны и не поставляются. Новые версии схемы требуют явной миграции. История исходников поставляется вместе с тестами; v1 не устанавливает Git-сервер или хостинг.
 
 Основа семантики частичного обновления: https://developers.google.com/workspace/calendar/api/v3/reference/events/patch
+
+## Статус выполнения — отдельно от плана
+
+Машиночитаемая запись в описании: [AMIR-EXECUTION-STATUS:v1] затем JSON-объект и [/AMIR-EXECUTION-STATUS].
+Для создания или обновления вызывайте Calendar_Guard.prepare_block с ключами operation=execution_status, event, execution, context.
+Execution: schema_version=1; status=PLANNED|DONE|PARTIAL|CANCELLED_PLAN|UNKNOWN; planned_start/end (исходный план, неизменный после первого сохранения); actual_start/end (подтверждённые фактические границы либо null); evidence (источник факта либо null).
+Контекст требует полного чтения затронутого периода. Маршрут: prepare, сохранить план в существующем operation journal, новое read_event + check_current, применить ТОЛЬКО connector_payload через Google Calendar, новое read_event + verify_update, перепроверить период.
+Изменение execution_status трогает лишь description выбранного экземпляра; все существующие заметки и Guard-managed раздел остаются неизменными. Результат подготовительного вызова не подтверждает запись в Google Calendar.
+PLANNED означает только намерение; DONE и PARTIAL требуют доказуемого источника. Истечение события не означает DONE, отмена события не доказывает пропуск, UNKNOWN не означает провал. Не подставлять запланированное время вместо фактического.
+Для отменённых событий Google Calendar status=cancelled: не восстанавливайте экземпляры; запишите соответствующее решение в уже существующий Changes. Исторические события без метки — неизвестны до проверки, не проводите автоматический массовый backfill без фактов.
+Текущее event.start/end может отличаться от неизменного planned_start/end: так сравнивается исходный план и подтверждённый факт.
