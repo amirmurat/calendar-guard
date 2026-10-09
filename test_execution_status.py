@@ -73,7 +73,7 @@ class ExecutionMetadataTests(unittest.TestCase):
         first = dispatch_prepare(self.req())
         r = self.req()
         r["event"] = first["after"]
-        r["execution"]["planned_start"] = "2026-10-09T17:30:00+05:00"
+        r["execution"]["planned_start"] = "2026-10-09T09:00:00+05:00"
         with self.assertRaisesRegex(GuardError, "immutable"):
             dispatch_prepare(r)
 
