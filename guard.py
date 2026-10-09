@@ -210,6 +210,108 @@ def prepare(request):
     return {'schema_version': VERSION, 'before': before, 'after': after, 'before_hash': digest(before), 'diff': changes, 'connector_payload': payload, 'block': block}
 
 
+
+# Independent execution status: does not touch the existing Guard-managed block.
+EXEC_OPEN = "[AMIR-EXECUTION-STATUS:v1]"
+EXEC_CLOSE = "[/AMIR-EXECUTION-STATUS]"
+EXEC_STATES = {"PLANNED", "DONE", "PARTIAL", "CANCELLED_PLAN", "UNKNOWN"}
+EXEC_KEYS = {"schema_version", "status", "planned_start", "planned_end",
+             "actual_start", "actual_end", "evidence"}
+
+
+def validate_execution(record):
+    require(isinstance(record, dict) and set(record) == EXEC_KEYS,
+            "Execution status requires exact v1 fields")
+    require(record["schema_version"] == 1, "Unknown execution status schema")
+    require(record["status"] in EXEC_STATES, "Unknown execution status")
+    planned_a, planned_b = stamp(record["planned_start"]), stamp(record["planned_end"])
+    require(planned_a < planned_b, "Invalid original planned interval")
+    actual_a, actual_b = record["actual_start"], record["actual_end"]
+    if actual_a is not None:
+        actual_a = stamp(actual_a)
+    if actual_b is not None:
+        actual_b = stamp(actual_b)
+    require(actual_a is None or actual_b is None or actual_a < actual_b,
+            "Invalid actual interval")
+    if record["status"] in {"PLANNED", "UNKNOWN", "CANCELLED_PLAN"}:
+        require(actual_a is None and actual_b is None,
+                "Non-completion status cannot include actual duration")
+    evidence = record["evidence"]
+    require(evidence is None or (isinstance(evidence, str) and 0 < len(evidence) <= 500),
+            "Invalid evidence field")
+    if record["status"] in {"DONE", "PARTIAL", "CANCELLED_PLAN"}:
+        require(bool(evidence), "Confirmed status needs a factual source")
+    return record
+
+
+def read_execution(description):
+    description = description or ""
+    if EXEC_OPEN not in description and EXEC_CLOSE not in description:
+        return None, None
+    require(description.count(EXEC_OPEN) == 1 and description.count(EXEC_CLOSE) == 1,
+            "Corrupt or duplicated execution status markers")
+    a = description.index(EXEC_OPEN)
+    b = description.index(EXEC_CLOSE)
+    require(b > a, "Inverted execution status markers")
+    body = description[a + len(EXEC_OPEN):b].strip()
+    try:
+        record = json.loads(body)
+    except (ValueError, TypeError) as exc:
+        raise GuardError("Malformed execution status JSON") from exc
+    validate_execution(record)
+    return record, (a, b + len(EXEC_CLOSE))
+
+
+def render_execution(record):
+    return EXEC_OPEN + "\n" + canonical(validate_execution(record)) + "\n" + EXEC_CLOSE
+
+
+def prepare_execution(request):
+    """Metadata-only update: preserves times, attendees and all existing Guard text."""
+    require(isinstance(request, dict) and
+            set(request) == {"operation", "event", "execution", "context"},
+            "Execution operation requires operation, event, execution, context")
+    before = request["event"]
+    context = request["context"]
+    require(isinstance(before, dict) and bool(before.get("id")),
+            "Existing event ID required")
+    require(before.get("status") != "cancelled",
+            "Cancelled events belong in Changes; do not revive them")
+    require(isinstance(context, dict) and context.get("complete") is True,
+            "Calendar context must be complete")
+    start, end = stamp(before.get("start")), stamp(before.get("end"))
+    require(start < end and stamp(context["window_start"]) <= start and
+            end <= stamp(context["window_end"]), "Event outside verified window")
+    attendees = before.get("attendees") or []
+    require(isinstance(attendees, list) and len(attendees) <= 1 and
+            all(isinstance(a, dict) and a.get("is_self") is True for a in attendees),
+            "Events with guests require separate handling")
+    new_record = validate_execution(request["execution"])
+    desc = before.get("description") or ""
+    old_record, bounds = read_execution(desc)
+    if old_record is not None:
+        for field in ("planned_start", "planned_end"):
+            require(stamp(new_record[field]) == stamp(old_record[field]),
+                    "Original plan is immutable; preserve planned_start/end")
+    rendered = render_execution(new_record)
+    after = copy.deepcopy(before)
+    if bounds is None:
+        after["description"] = desc + ("\n\n" if desc else "") + rendered
+    else:
+        after["description"] = desc[:bounds[0]] + rendered + desc[bounds[1]:]
+    changes = ({"description": {"before": before.get("description"),
+                                "after": after["description"]}}
+               if (before.get("description") or "") != after["description"] else {})
+    payload = {"event_id": before["id"], "update_scope": "this_instance"}
+    if changes:
+        payload["description"] = after["description"]
+    return {"schema_version": VERSION, "operation": "execution_status",
+            "before": before, "after": after, "before_hash": digest(before),
+            "diff": changes, "connector_payload": payload,
+            "execution": new_record}
+
+
+
 def check_current(plan, current):
     require(digest(current) == plan['before_hash'], 'Событие изменилось после подготовки; перечитай и подготовь заново')
     return {'ok': True, 'connector_payload': plan['connector_payload']}
