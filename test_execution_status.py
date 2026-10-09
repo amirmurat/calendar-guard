@@ -69,6 +69,24 @@ class ExecutionMetadataTests(unittest.TestCase):
         self.assertEqual(second["after"]["description"].count("[AMIR-EXECUTION-STATUS:v1]"), 1)
         self.assertIn("Keep this human note.", second["after"]["description"])
 
+    def test_provider_wrapped_long_evidence_is_readable(self):
+        from guard import render_execution
+        record = copy.deepcopy(self.meta)
+        record.update({
+            "status": "DONE",
+            "actual_start": "2026-10-09T05:30:00+05:00",
+            "actual_end": "2026-10-09T06:00:00+05:00",
+            "evidence": "Подтверждение пользователя 09.10.2026; Quran Study Journal и Calendar Guard verify",
+        })
+        wrapped = render_execution(record)
+        self.assertIn("\\u0020", wrapped)
+        self.assertNotIn("Подтверждение пользователя", wrapped)
+        self.assertEqual(read_execution(wrapped)[0], record)
+        # Legacy calendar text split actual JSON evidence mid-string at two spaces:
+        old_json = '{"actual_end":"2026-10-09T06:00:00+05:00","actual_start":"2026-10-09T05:30:00+05:00","evidence":"Подтверждение\nпользователя 09.10.2026; Quran Study Journal и Calendar Guard\nverify","planned_end":"2026-10-09T09:00:00+05:00","planned_start":"2026-10-09T08:30:00+05:00","schema_version":1,"status":"DONE"}'
+        legacy = "[AMIR-EXECUTION-STATUS:v1]\n" + old_json + "\n[/AMIR-EXECUTION-STATUS]"
+        self.assertEqual(read_execution(legacy)[0]["evidence"], record["evidence"])
+
     def test_reject_rewrite_of_original_plan(self):
         first = dispatch_prepare(self.req())
         r = self.req()
